@@ -60,3 +60,8 @@ coverage.xml
 *.cover
 *.log
 *.pot
+
+payments
+*payments
+*/payments
+payments/*
