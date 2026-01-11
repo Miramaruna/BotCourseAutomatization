@@ -1,55 +1,59 @@
-# region imports
-
 import asyncio
 import logging
-
-from config import TOKEN
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import *
 
-from app.handlers import r
-
-# endregion
-
-if not TOKEN:
-    raise ValueError("🚨 TOKEN environment variable is not set")
+from config import TOKEN
+from app.database.core import create_table
+from app.handlers import router as main_router
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
-# Создаем логгер
+if not os.path.exists("logs"):
+    os.makedirs("logs")
+
 logger = logging.getLogger('bot_actions')
 logger.setLevel(logging.INFO)
 
-# Формат записи: Время - Уровень - Сообщение
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-# Пишем в файл
-file_handler = logging.FileHandler('actions.log', encoding='utf-8')
+file_handler = logging.FileHandler('logs/actions.log', encoding='utf-8')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-# Пишем в консоль
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 # -----------------------------
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
-
 async def main():
-    # Используем наш настроенный логгер
+    # Проверка папок
+    for folder in ["Assets", "payments"]:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+    # Инициализация БД
+    await create_table()
+    from app.database.requests import sync_courses_from_config
+    await sync_courses_from_config()
+
+    bot = Bot(token=TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    
+    # Подключаем роутеры
+    dp.include_router(main_router)
+
     logger.info("🤖 Бот запускается...")
-    
-    dp.include_router(r)
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, skip_updates=True, polling_timeout=30)
-    
+
+    # Установка команд меню
     await bot.set_my_commands([
         BotCommand(command="/start", description="Запустить бота"),
         BotCommand(command="/buy", description="Купить курс")
     ])
+
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
